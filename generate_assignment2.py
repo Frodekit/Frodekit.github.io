@@ -160,9 +160,10 @@ plt.close()
 print(f"  Saved {out1}")
 
 # ──────────────────────────────────────────────────────────────────────────
-# VIZ 2 — Folium HeatMapWithTime: MVT by year
+# VIZ 2 — Plotly density_mapbox animated by year (replaces Folium HeatMapWithTime
+# which relies on unreliable CDN scripts)
 # ──────────────────────────────────────────────────────────────────────────
-print("\n[2/3] Folium HeatMapWithTime: Motor Vehicle Theft 2016-2024...")
+print("\n[2/3] Plotly animated density map: Motor Vehicle Theft 2016-2024...")
 
 df_mvt = df[
     (df['Unified Category'] == 'Motor Vehicle Theft') &
@@ -176,40 +177,64 @@ df_mvt = df_mvt[
     (df_mvt['X'] > -123) & (df_mvt['X'] < -122)
 ]
 
+SAMPLE_PER_YEAR = 3000
 years = list(range(2016, 2025))
-SAMPLE_PER_YEAR = 2500
 
-heat_data = []
-year_labels = []
+samples = []
 for yr in years:
-    subset = df_mvt[df_mvt['Year'] == yr][['Y', 'X']]
+    subset = df_mvt[df_mvt['Year'] == yr][['Y', 'X', 'Year']]
     n = min(SAMPLE_PER_YEAR, len(subset))
-    sample = subset.sample(n, random_state=42) if n > 0 else subset
-    heat_data.append(sample.values.tolist() if n > 0 else [])
-    year_labels.append(str(yr))
+    samples.append(subset.sample(n, random_state=42))
     print(f"    {yr}: {n} points")
 
-m = folium.Map(
-    location=[37.7749, -122.4194],
-    zoom_start=12,
-    tiles='https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    attr='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> '
-         'contributors &copy; <a href="https://carto.com/">CARTO</a>'
+df_map = pd.concat(samples, ignore_index=True)
+df_map['Year'] = df_map['Year'].astype(str)
+
+fig_map = px.density_mapbox(
+    df_map,
+    lat='Y', lon='X',
+    animation_frame='Year',
+    radius=14,
+    center={"lat": 37.7749, "lon": -122.4194},
+    zoom=11,
+    mapbox_style="carto-darkmatter",
+    color_continuous_scale=[
+        [0.0,  'rgba(13,15,26,0)'],
+        [0.25, 'rgba(59,31,140,0.6)'],
+        [0.55, 'rgba(233,69,96,0.85)'],
+        [0.80, 'rgba(245,166,35,0.95)'],
+        [1.0,  'rgba(255,255,255,1)'],
+    ],
+    title='Motor Vehicle Theft Density by Year (2016–2024)',
 )
 
-HeatMapWithTime(
-    heat_data,
-    index=year_labels,
-    auto_play=False,
-    max_opacity=0.85,
-    min_opacity=0.05,
-    radius=14,
-    blur=10,
-    gradient={0.2: '#0d0f1a', 0.45: '#3b1f8c', 0.65: ACCENT2, 0.85: '#f5a623', 1.0: '#ffffff'}
-).add_to(m)
+fig_map.update_layout(
+    paper_bgcolor=BG_DARK,
+    font=dict(color=TEXT, family='Segoe UI, system-ui, sans-serif'),
+    title_font=dict(size=14, color=TEXT),
+    coloraxis_showscale=False,
+    margin=dict(t=50, b=10, l=0, r=0),
+    sliders=[{
+        'currentvalue': {'prefix': 'Year: ', 'font': {'color': TEXT}},
+        'font': {'color': TEXT},
+    }],
+    updatemenus=[{
+        'buttons': [
+            {'label': 'Play',  'method': 'animate',
+             'args': [None, {'frame': {'duration': 900, 'redraw': True},
+                             'fromcurrent': True, 'transition': {'duration': 200}}]},
+            {'label': 'Pause', 'method': 'animate',
+             'args': [[None], {'frame': {'duration': 0, 'redraw': False},
+                               'mode': 'immediate', 'transition': {'duration': 0}}]},
+        ],
+        'direction': 'left', 'pad': {'r': 10, 't': 10},
+        'type': 'buttons', 'x': 0.1, 'y': 0,
+        'font': {'color': '#0d0f1a'},
+    }],
+)
 
 out2 = os.path.join(VIZ_DIR, "mvt_heatmap_by_year.html")
-m.save(out2)
+fig_map.write_html(out2, include_plotlyjs='cdn')
 print(f"  Saved {out2}")
 
 # ──────────────────────────────────────────────────────────────────────────
